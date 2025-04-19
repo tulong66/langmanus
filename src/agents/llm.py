@@ -1,6 +1,8 @@
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
-from typing import Optional
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.llms import Replicate
+from typing import Optional, Union
 
 from src.config import (
     REASONING_MODEL,
@@ -60,18 +62,69 @@ def create_deepseek_llm(
     return ChatDeepSeek(**llm_kwargs)
 
 
+def create_gemini_llm(
+    model: str,
+    api_key: Optional[str] = None,
+    temperature: float = 0.0,
+    **kwargs,
+) -> ChatGoogleGenerativeAI:
+    """
+    Create a ChatGoogleGenerativeAI instance with the specified configuration
+    """
+    llm_kwargs = {"model": model, "temperature": temperature, **kwargs}
+
+    if api_key:  # This will handle None or empty string
+        llm_kwargs["google_api_key"] = api_key
+
+    return ChatGoogleGenerativeAI(**llm_kwargs)
+
+
+def create_replicate_llm(
+    model: str,
+    api_key: Optional[str] = None,
+    **kwargs,
+) -> Replicate:
+    """
+    Create a Replicate instance with the specified configuration
+    """
+    llm_kwargs = {"model": model, **kwargs}
+
+    if api_key:  # This will handle None or empty string
+        llm_kwargs["replicate_api_token"] = api_key
+
+    return Replicate(**llm_kwargs)
+
+
 # Cache for LLM instances
-_llm_cache: dict[LLMType, ChatOpenAI | ChatDeepSeek] = {}
+_llm_cache: dict[LLMType, Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI, Replicate]] = {}
 
 
-def get_llm_by_type(llm_type: LLMType) -> ChatOpenAI | ChatDeepSeek:
+def get_llm_by_type(llm_type: LLMType) -> Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI, Replicate]:
     """
     Get LLM instance by type. Returns cached instance if available.
     """
     if llm_type in _llm_cache:
         return _llm_cache[llm_type]
 
-    if llm_type == "reasoning":
+    # Geminiモデルの場合
+    if REASONING_MODEL.startswith("gemini") and llm_type == "reasoning":
+        llm = create_gemini_llm(
+            model=REASONING_MODEL,
+            api_key=REASONING_API_KEY,
+        )
+    elif BASIC_MODEL.startswith("gemini") and llm_type == "basic":
+        llm = create_gemini_llm(
+            model=BASIC_MODEL,
+            api_key=BASIC_API_KEY,
+        )
+    # Replicateモデルの場合
+    elif "lucataco/qwen" in VL_MODEL and llm_type == "vision":
+        llm = create_replicate_llm(
+            model=VL_MODEL,
+            api_key=VL_API_KEY,
+        )
+    # 従来のモデルの場合
+    elif llm_type == "reasoning":
         llm = create_deepseek_llm(
             model=REASONING_MODEL,
             base_url=REASONING_BASE_URL,

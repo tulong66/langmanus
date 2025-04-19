@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from pydantic import BaseModel, Field
 from typing import Optional, ClassVar, Type
@@ -9,6 +10,8 @@ from src.agents.llm import vl_llm
 from src.tools.decorators import create_logged_tool
 from src.config import CHROME_INSTANCE_PATH
 
+logger = logging.getLogger(__name__)
+
 expected_browser = None
 
 # Use Chrome instance if specified
@@ -16,6 +19,9 @@ if CHROME_INSTANCE_PATH:
     expected_browser = Browser(
         config=BrowserConfig(chrome_instance_path=CHROME_INSTANCE_PATH)
     )
+    logger.info(f"Using Chrome instance at: {CHROME_INSTANCE_PATH}")
+else:
+    logger.warning("No Chrome instance path specified. Browser tool may not work properly.")
 
 
 class BrowserUseInput(BaseModel):
@@ -35,9 +41,15 @@ class BrowserTool(BaseTool):
 
     def _run(self, instruction: str) -> str:
         """Run the browser task synchronously."""
+        from src.agents.custom_llm import QwenOmniWrapper
+
+        logger.info(f"Browser tool executing task: {instruction}")
+        # カスタムラッパーを作成
+        qwen_wrapper = QwenOmniWrapper(llm=vl_llm)
+
         self._agent = BrowserAgent(
             task=instruction,  # Will be set per request
-            llm=vl_llm,
+            llm=qwen_wrapper,  # カスタムラッパーを使用
             browser=expected_browser,
         )
         try:
@@ -45,29 +57,41 @@ class BrowserTool(BaseTool):
             asyncio.set_event_loop(loop)
             try:
                 result = loop.run_until_complete(self._agent.run())
-                return (
-                    str(result)
-                    if not isinstance(result, AgentHistoryList)
-                    else result.final_result
-                )
+                if isinstance(result, AgentHistoryList):
+                    logger.info(f"Browser task completed with result: {result.final_result}")
+                    return result.final_result
+                else:
+                    logger.info(f"Browser task completed with result: {str(result)}")
+                    return str(result)
             finally:
                 loop.close()
         except Exception as e:
+            logger.error(f"Error executing browser task: {str(e)}")
             return f"Error executing browser task: {str(e)}"
 
     async def _arun(self, instruction: str) -> str:
         """Run the browser task asynchronously."""
+        from src.agents.custom_llm import QwenOmniWrapper
+
+        logger.info(f"Browser tool executing async task: {instruction}")
+        # カスタムラッパーを作成
+        qwen_wrapper = QwenOmniWrapper(llm=vl_llm)
+
         self._agent = BrowserAgent(
-            task=instruction, llm=vl_llm  # Will be set per request
+            task=instruction,  # Will be set per request
+            llm=qwen_wrapper,  # カスタムラッパーを使用
+            browser=expected_browser,
         )
         try:
             result = await self._agent.run()
-            return (
-                str(result)
-                if not isinstance(result, AgentHistoryList)
-                else result.final_result
-            )
+            if isinstance(result, AgentHistoryList):
+                logger.info(f"Browser async task completed with result: {result.final_result}")
+                return result.final_result
+            else:
+                logger.info(f"Browser async task completed with result: {str(result)}")
+                return str(result)
         except Exception as e:
+            logger.error(f"Error executing browser async task: {str(e)}")
             return f"Error executing browser task: {str(e)}"
 
 
