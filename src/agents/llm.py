@@ -4,6 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.llms import Replicate
 from typing import Optional, Union
 
+from src.agents.custom_llm import QwenOmniWrapper
 from src.config import (
     REASONING_MODEL,
     REASONING_BASE_URL,
@@ -96,10 +97,10 @@ def create_replicate_llm(
 
 
 # Cache for LLM instances
-_llm_cache: dict[LLMType, Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI, Replicate]] = {}
+_llm_cache: dict[LLMType, Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI, Replicate, QwenOmniWrapper]] = {}
 
 
-def get_llm_by_type(llm_type: LLMType) -> Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI, Replicate]:
+def get_llm_by_type(llm_type: LLMType) -> Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI, Replicate, QwenOmniWrapper]:
     """
     Get LLM instance by type. Returns cached instance if available.
     """
@@ -119,10 +120,13 @@ def get_llm_by_type(llm_type: LLMType) -> Union[ChatOpenAI, ChatDeepSeek, ChatGo
         )
     # Replicateモデルの場合
     elif "lucataco/qwen" in VL_MODEL and llm_type == "vision":
-        llm = create_replicate_llm(
+        # ReplicateのQwen2.5-Omniモデルを使用
+        replicate_llm = create_replicate_llm(
             model=VL_MODEL,
             api_key=VL_API_KEY,
         )
+        # QwenOmniWrapperでラップ
+        llm = QwenOmniWrapper(llm=replicate_llm)
     # 従来のモデルの場合
     elif llm_type == "reasoning":
         llm = create_deepseek_llm(
